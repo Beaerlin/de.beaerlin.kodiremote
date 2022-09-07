@@ -2,7 +2,7 @@
 
 **Features**
 
- - Simple and Usable
+ - Simple Switch between multiple Media Players
  - Simple Setup using ZeroConfig (Scan for Kodi during setup)
  - Disable Idle Mode (Screen Stays On)
  - Wake up Kodi using WOL
