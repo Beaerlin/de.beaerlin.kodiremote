@@ -11,7 +11,6 @@
 
 
 
-
 ![alt text](https://github.com/Beaerlin/de.beaerlin.kodiremote/blob/main/screenshots/control.png?raw=true)   
 
 ![alt text](https://github.com/Beaerlin/de.beaerlin.kodiremote/blob/main/screenshots/settings.png?raw=true)
