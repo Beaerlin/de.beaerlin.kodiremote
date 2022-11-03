@@ -1,12 +1,10 @@
-#!/usr/bin/python3
-
 import sys
 import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 # ~ gi.require_version('Polkit', '1.0')
-from gi.repository import Gtk, GLib, Adw, GObject, Gio  # Polkit
+from gi.repository import Gtk, Gdk, GdkPixbuf, GLib, Adw, GObject, Gio  # Polkit
 
 
 from pydbus import SessionBus
@@ -19,25 +17,25 @@ except:
     feedbackd = None
 
 
-#
-# class Stack(Gtk.Stack):
-#     """Wrapper for Gtk.Stack with  with a StackSwitcher"""
-#
-#     def __init__(self):
-#         super(Stack, self).__init__()
-#         self.switcher = Gtk.StackSwitcher()
-#         self.switcher.set_stack(self)
-#         self._pages = {}
-#
-#     def add_page(self, name, title, widget):
-#         page = self.add_child(widget)
-#         page.set_name(name)
-#         page.set_title(title)
-#         self._pages[name] = page
-#         return page
+class Stack(Gtk.Stack):
+    """Wrapper for Gtk.Stack with  with a StackSwitcher"""
+
+    def __init__(self):
+        super(Stack, self).__init__()
+        self.switcher = Gtk.StackSwitcher()
+        self.switcher.set_stack(self)
+        self._pages = {}
+
+    def add_page(self, name, title, widget):
+        page = self.add_child(widget)
+        page.set_name(name)
+        page.set_title(title)
+        self._pages[name] = page
+        return page
 
 
 import threading
+import tempfile
 import os
 import time
 import requests
@@ -47,7 +45,9 @@ from kodi_api import Kodi_API
 from functools import partial
 import urllib
 from urllib import parse
-import scan
+import hashlib
+import zconf
+TEMP = tempfile.gettempdir()
 
 VERSION = "0.0.1"
 
@@ -63,8 +63,12 @@ if not os.path.isdir(configpath):
 configfile = os.path.join(configpath, "remote.cfg")
 
 
+
+
 class MainWindow(Gtk.ApplicationWindow):
     def __init__(self, *args, **kwargs):
+
+        
         app = kwargs["application"]
         super().__init__(*args, **kwargs)
         self.closed = False
@@ -78,7 +82,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.kodi_list = []
         self.kodi_selected = 0
-        # ~ self.set_decorated(False)
+        self.set_decorated(False)
 
         topgrid = Gtk.Grid(column_spacing=1, row_spacing=1)
         topgrid.set_hexpand(True)
@@ -103,17 +107,28 @@ class MainWindow(Gtk.ApplicationWindow):
         btnplus = Gtk.Image.new_from_file(os.path.join(imagepath, "png/servers.png"))
         btnplus.add_controller(gesture)
 
-        topgrid.attach(self.kcombo, 0, 0, 100, 50)
+        topgrid.attach(self.kcombo, 0, 0, 80, 50)
         # ~ topgrid.attach_next_to(btnminus, self.kcombo, Gtk.PositionType.LEFT, 40, 50)
         topgrid.attach_next_to(btnplus, self.kcombo, Gtk.PositionType.LEFT, 80, 50)
+        
+        self.menu_button = Gtk.MenuButton()
+        self.menu_button.set_icon_name("view-more-symbolic")
+        self.menu_button.set_popover(self.popover)
+        # ~ self.header_bar.pack_end(self.menu_button)
+        # ~ topgrid.attach_next_to(btnplus,  self.menu_button, Gtk.PositionType.RIGHT)
+        topgrid.attach(self.menu_button, 85, 0, 40, 50)
 
-        status = Gtk.Label()
-        status.set_markup("<span font='10' face='Georgia'>Offline</span>")
-        status.set_wrap(True)
-        status.set_property("height-request", 60)
+        self.status  = Gtk.Label()
+        self.set_status("Offline")
+        self.status.set_wrap(True)
+        self.status.set_property("height-request", 60)
 
-        topgrid.attach(status, -50, 100, 180, 60)
-        self.status = status
+        topgrid.attach(self.status, -70, 100, 180, 60)
+        
+        self.image = Gtk.Image()
+        topgrid.attach(self.image, -70, 120, 200, 100)
+        
+        
 
         self.mainbox.append(topgrid)
 
@@ -225,7 +240,9 @@ class MainWindow(Gtk.ApplicationWindow):
         self.stack.add_page("Main", "Mainbox", self.mainbox)
         self.stack.add_page("Add", "Add Kodi", setupbox)
         self.stack.add_page("Del", "Del Kodi", rembox)
-
+        
+        self.clear_thumb()
+        
         self.set_child(self.stack)
         self.load()
 
@@ -244,7 +261,6 @@ class MainWindow(Gtk.ApplicationWindow):
         port = self.add_port.get_text()
         user = self.add_user.get_text()
         password = self.add_pass.get_text()
-        c = Kodi_API(host, port, user, password)
 
         if name == "":
             self.add_error.set_text("Please enter a name")
@@ -259,10 +275,15 @@ class MainWindow(Gtk.ApplicationWindow):
         except:
             self.add_error.set_text("Port is no Integer")
             return
-
+            
+            
+        c = Kodi_API(host, port, user, password)
+        
         if not c.ping():
             self.add_error.set_text("Connection Error")
             return
+            
+        
 
         s = Settings(configfile)
         sect = s.get_sections()
@@ -274,7 +295,7 @@ class MainWindow(Gtk.ApplicationWindow):
         s.set(name, "port", port)
         s.set(name, "user", user)
         s.set(name, "password", password)
-        s.set(name, "mac", c.mac)
+        s.set(name, "mac", c.get_mac())
 
         self.load()
         self.back()
@@ -348,6 +369,44 @@ class MainWindow(Gtk.ApplicationWindow):
         )
         self.stack.set_visible_child_name("Del")
 
+    def set_status(self,status):
+                self.status.set_markup(
+                    f"<span font='12' face='Georgia'>{status}</span>"
+                )
+
+    def set_thumb(self,act):
+        c = self.get_connection()
+        
+        if act["thumbnail"].startswith("http"):
+            uri = act["thumbnail"]
+        else:
+            uri = f"{c.server}image/%s" % urllib.parse.quote(
+                act["thumbnail"], safe=""
+            )
+        
+        fname = "krc_%s.jpg"%hashlib.md5(uri.encode('utf-8')).hexdigest()
+        fpath = os.path.join(TEMP,fname)
+        if os.path.isfile(fpath):
+            return
+        
+        thumb = requests.get(uri)
+        # ~ tmp = tempfile.NamedTemporaryFile(prefix='krcimage_',suffix=".jpg").name
+        with open(fpath, "wb") as f:
+            f.write(thumb.content)
+        pixbuf = GdkPixbuf.Pixbuf.new_from_file_at_size(fpath, 800, 800)
+        self.image.set_from_pixbuf(pixbuf)
+        # ~ os.remove(tmp)
+        
+    def clear_thumb(self):
+        self.image.clear()
+        for f in os.listdir(TEMP):
+            if f.startswith('krc_'):
+                os.remove(os.path.join(TEMP,f))
+        
+        
+        # ~ TEMP
+        
+
     def update(self):
 
         while not self.closed:
@@ -356,42 +415,28 @@ class MainWindow(Gtk.ApplicationWindow):
             try:
                 c = self.get_connection()
             except Exception as e:
-                self.status.set_markup(
-                    f"<span font='10' face='Georgia'>Error Loading Config {e}</span>"
-                )
+                self.set_status(f"Error Loading Config {e}")
+                self.clear_thumb()
                 continue
 
             if not c.ping():
-                self.status.set_markup("<span font='10' face='Georgia'>Offline</span>")
+                self.set_status("Offline")
+                self.clear_thumb()
                 continue
 
             try:
                 act = c.get_active()
             except:
-                self.status.set_markup("<span font='10' face='Georgia'>Offline</span>")
+                self.set_status("Offline")
+                self.clear_thumb()
                 continue
             if act == None:
-                self.status.set_markup("<span font='10' face='Georgia'>Stopped</span>")
+                self.set_status("Stopped")
+                self.clear_thumb()
                 continue
             else:
-                # ~ self.status.set_text('Playing: %s'%act['label'])
-                self.status.set_markup(
-                    f"<span font='10' face='Georgia'>Playing: {act['label']}</span>"
-                )
-
-            if act["thumbnail"].startswith("http"):
-                uri = act["thumbnail"]
-            else:
-                uri = " http://htpcw.mgm:8080/image/%s" % urllib.parse.quote(
-                    act["thumbnail"], safe=""
-                )
-
-            thumb = requests.get(uri)
-            tmp = tempfile.NamedTemporaryFile(suffix=".jpg").name
-            with open(tmp, "wb") as f:
-                f.write(thumb.content)
-            image = Gtk.Image.new_from_file("/path/to/my_file.png")
-            os.remove(tmp)
+                self.set_status(f"Playing: {act['label']}")
+                self.set_thumb(act)
 
     def _build_header(self):
         self.header_bar = Gtk.HeaderBar()
@@ -418,10 +463,10 @@ class MainWindow(Gtk.ApplicationWindow):
 
         self.popover.set_child(vbox)
 
-        self.menu_button = Gtk.MenuButton()
-        self.menu_button.set_icon_name("view-more-symbolic")
-        self.menu_button.set_popover(self.popover)
-        self.header_bar.pack_end(self.menu_button)
+        # ~ self.menu_button = Gtk.MenuButton()
+        # ~ self.menu_button.set_icon_name("view-more-symbolic")
+        # ~ self.menu_button.set_popover(self.popover)
+        # ~ self.header_bar.pack_end(self.menu_button)
 
         self.set_titlebar(self.header_bar)
 
@@ -555,7 +600,7 @@ class MainWindow(Gtk.ApplicationWindow):
 
         data = self.kodi_list[num]
         # ~ print('##########',data)
-        c = Kodi_API(data["host"], data["port"], data["user"], data["password"])
+        c = Kodi_API(data["host"], data["port"], data["user"], data["password"], data["mac"])
         return c
 
     def load(self):
@@ -579,6 +624,7 @@ class MainWindow(Gtk.ApplicationWindow):
             k["port"] = int(s.get(sec, "port"))
             k["user"] = s.get(sec, "user")
             k["password"] = s.get(sec, "password")
+            k["mac"] = s.get(sec, "mac")
 
             self.kodi_list.append(k)
 
@@ -602,7 +648,7 @@ class RemoteApp(Adw.Application):
             application=app, title="Kodi Remote Control (%s)" % VERSION
         )
         self.win.set_icon_name("de.beaerlin.kodiremote")
-        app.inhibit(self.win, Gtk.ApplicationInhibitFlags.SUSPEND, "Remote")
+        # ~ app.inhibit(self.win, Gtk.ApplicationInhibitFlags.SUSPEND, "Remote")
         app.inhibit(self.win, Gtk.ApplicationInhibitFlags.IDLE, "Remote")
         self.win.present()
         print("loaded")
