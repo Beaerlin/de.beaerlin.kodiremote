@@ -18,6 +18,7 @@ try:
 except:
     feedbackd = None
 
+
 #
 # class Stack(Gtk.Stack):
 #     """Wrapper for Gtk.Stack with  with a StackSwitcher"""
