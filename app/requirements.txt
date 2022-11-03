@@ -1,0 +1,12 @@
+requests
+charset_normalizer
+idna>=2.5
+urllib3>=1.21.1
+certifi>=2017.4.17
+zeroconf
+ifaddr
+async_timeout
+PyGObject
+get-mac
+wakeonlan
+pydbus
